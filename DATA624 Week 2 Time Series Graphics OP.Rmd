@@ -1,0 +1,150 @@
+---
+title: "DATA624 Homework 1 Time Series Graphics"
+author: "Omar Pineda"
+date: "2/2/2020"
+output: html_document
+---
+
+Assignment: Exercises 2.1, 2.2, 2.3 and 2.6 from the HA textbook
+
+
+```{r initialize}
+library(fpp2)
+```
+
+2.1
+Use the help function to explore what the series gold, woolyrnq and gas represent.
+
+a. Use autoplot() to plot each of these in separate plots.
+b. What is the frequency of each series? Hint: apply the frequency() function.
+c. Use which.max() to spot the outlier in the gold series. Which observation was it?
+
+The gold dataset is a time series of the daily morning gold prices in US dollars between 1/1/1985 and 3/31/1989. The frequency of this data is daily. It trended upwards for about 3/4 of the timespan, and had one significant outlier at day 770. It would be interesting to see this time series plotted against one of the stock market as the relationship between gold and stock prices have an inverse relationship.
+
+```{r gold}
+help(gold)
+autoplot(gold)
+frequency(gold)
+which.max(gold)
+```
+
+The woolyrnq dataset is a time series of the quarterly production of woollen yearn in Australia between March 1965 and September 1994. The frequency of this data is quarterly. It trended upwards steadily and then decreased and seemed to oscillate more volatilely but remain in a range between 4000 and 6000.
+
+```{r woolyrnq}
+help("woolyrnq")
+autoplot(woolyrnq)
+frequency(woolyrnq)
+```
+
+The gas dataset is a time series of Australia's gas production between 1956 and 1995. The frequency of this data is monthly. It trended upwards throughout this time and seems to have a cyclical component to it.
+
+```{r gas}
+help("gas")
+autoplot(gas)
+frequency(gas)
+```
+
+2.2 
+Download the file tute1.csv from the book website, open it in Excel (or some other spreadsheet application), and review its contents. You should find four columns of information. Columns B through D each contain a quarterly series, labelled Sales, AdBudget and GDP. Sales contains the quarterly sales for a small company over the period 1981-2005. AdBudget is the advertising budget and GDP is the gross domestic product. All series have been adjusted for inflation.
+
+a. You can read the data into R with the following script:
+```{r readData}
+tute1 <- read.csv("tute1.csv", header=TRUE)
+#View(tute1)
+```
+
+b. Convert the data to time series
+```{r convert}
+mytimeseries <- ts(tute1[,-1], start=1981, frequency=4) #(The [,-1] removes the first column which contains the quarters as we don’t need them now.)
+```
+
+c. Construct time series plots of each of the three series. Check what happens when you don’t include facets=TRUE.
+```{r plot}
+autoplot(mytimeseries, facets=TRUE)
+autoplot(mytimeseries)
+```
+When we don't include facets = TRUE, the three time series are plotted on the same graph rather than on independent y-axes. They are also color-coded with a legend in order to differentiate each series.
+
+2.3
+Download some monthly Australian retail data from the book website. These represent retail sales in various categories for different Australian states, and are stored in a MS-Excel file.
+
+a. You can read the data into R with the following script:
+```{r read2.3}
+retaildata <- readxl::read_excel("retail.xlsx", skip=1) #The second argument (skip=1) is required because the Excel sheet has two header rows.
+```
+
+b. Select one of the time series as follows (but replace the column name with your own chosen column). I chose to examine the series in column A3349415T.
+```{r selectSeries}
+myts <- ts(retaildata[,"A3349415T"],
+  frequency=12, start=c(1982,4))
+```
+
+c. Explore your chosen retail time series using the following functions:
+```{r explore}
+autoplot(myts)
+ggseasonplot(myts)
+ggsubseriesplot(myts)
+gglagplot(myts)
+ggAcf(myts)
+```
+
+Can you spot any seasonality, cyclicity and trend? What do you learn about the series?
+
+There appears to be some seasonality during December as the value for this series is greater during this month, and this increase becomes more substantial in later years. This seasonality is confirmed by the autocorrelation plot with peaks that occur at lags of 12 months. There is an upward trend in the data up until around 2008 when it begins to decrease somewhat. There may be a cycle here related to the business cycle but we would need to see more data to determine this. 
+
+2.6
+Use the following graphics functions: autoplot(), ggseasonplot(), ggsubseriesplot(), gglagplot(), ggAcf() and explore features from the following time series: hsales, usdeaths, bricksq, sunspotarea, gasoline.
+
+Can you spot any seasonality, cyclicity and trend?
+What do you learn about the series?
+
+For hsales, there appears to be some seasonality in that sales are higher in the spring around March. There is not enough data to see trend or cyclicity, however, but I'm sure that they would exist if we had more history.
+
+```{r hsales}
+autoplot(hsales)
+ggseasonplot(hsales)
+ggsubseriesplot(hsales)
+gglagplot(hsales)
+ggAcf(hsales)
+```
+
+There does not seem to be a clear trend or cyclicity in the usdeaths time series, but there is some seasonality as deaths tend to be higher in the summer and lower in the winter. This is surprising as I'd assume the opposite would be true nowadays, but there may be some exception related to this timeframe.
+
+```{r usdeaths}
+autoplot(usdeaths)
+ggseasonplot(usdeaths)
+ggsubseriesplot(usdeaths)
+gglagplot(usdeaths)
+ggAcf(usdeaths)
+```
+
+There is an upward trend in this data of brick production in Australia that sort of plateaus later on in the series. There does not seem to be much seasonality as the bricks produced by quarter seem similar, but there appears to be some cyclicity that is likely due to the business cycle.
+
+```{r bricksq}
+help(bricksq)
+autoplot(bricksq)
+ggseasonplot(bricksq)
+ggsubseriesplot(bricksq)
+gglagplot(bricksq)
+ggAcf(bricksq)
+```
+
+There is clearly no seasonality in this series as R pointed out. Given this, I would assume that the other series had seasonality in them and that it's just a matter of how strong/apparent the seasonality is. There does not seem to be a trend either, but there is cyclicity as the series oscillates over time.
+
+```{r sunspotarea}
+autoplot(sunspotarea)
+#ggseasonplot(sunspotarea)
+#ggsubseriesplot(sunspotarea)
+gglagplot(sunspotarea)
+ggAcf(sunspotarea)
+```
+
+There appears to be some seasonality in this series at a 52 week lag, and it would be interesting to possibly aggregate the data to see this seasonality in a different context. There is also a positive trend and cyclicity as well.
+
+```{r gasoline}
+autoplot(gasoline)
+ggseasonplot(gasoline)
+#ggsubseriesplot(gasoline)
+gglagplot(gasoline)
+ggAcf(gasoline)
+```
