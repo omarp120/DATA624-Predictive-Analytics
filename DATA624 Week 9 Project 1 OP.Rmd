@@ -1,0 +1,253 @@
+---
+title: "DATA624 Project 1"
+author: "Omar Pineda"
+date: "3/23/2020"
+output: html_document
+---
+
+## {.tabset}
+
+### Introduction
+
+This project consists of 3 parts - two required and one bonus and is worth 15% of your grade.  I will accept late submissions with a penalty until the meetup after that when we review some projects.
+
+### Part A – ATM Forecast
+
+In part A, I want you to forecast how much cash is taken out of 4 different ATM machines for May 2010.  The data is given in a single file. The variable ‘Cash’ is provided in hundreds of dollars, other than that it is straight forward. I am being somewhat ambiguous on purpose to make this have a little more business feeling. Explain and demonstrate your process, techniques used and not used, and your actual forecast.I am giving you data via an excel file, please provide your written report on your findings, visuals, discussion and your R code via an RPubs link along with the actual.rmd file. Also please submit the forecast which you will put in an Excel readable file.
+
+First, we read in our data from the excel file and drop any NA values. The data spans from 5/1/2009 to 4/30/2010, and we will forecast ATM withdrawal amounts for the month of May 2010 for each ATM. We convert each of the four ATM's data from the original excel and imported dataframe into individual time series and visualize them all on the same plot. We see that ATM #4 has greater withdrawals overall than the other 3 ATMs, and it has one considerable spike in it that we might want to take a closer look at. We will explore each ATM individually and forecast accordingly.
+
+```{r load}
+library(fpp2)
+library(dplyr)
+library(tidyr)
+library(imputeTS)
+```
+
+```{r}
+atm <- readxl::read_excel("ATM624Data.xlsx")
+atm <- drop_na(atm)
+
+atm1 <- atm[atm$ATM == "ATM1",]
+atm2 <- atm[atm$ATM == "ATM2",]
+atm3 <- atm[atm$ATM == "ATM3",]
+atm4 <- atm[atm$ATM == "ATM4",]
+
+atm1 <- subset(atm1, select = -c(ATM, DATE))
+atm2 <- subset(atm2, select = -c(ATM, DATE))
+atm3 <- subset(atm3, select = -c(ATM, DATE))
+atm4 <- subset(atm4, select = -c(ATM, DATE))
+
+atm1ts <- ts(atm1)
+atm2ts <- ts(atm2)
+atm3ts <- ts(atm3)
+atm4ts <- ts(atm4)
+
+autoplot(atm1ts, series = "ATM 1") + autolayer(atm2ts, series = "ATM 2", PI=FALSE) + autolayer(atm3ts, series = "ATM 3", PI=FALSE) + autolayer(atm4ts, series = "ATM 4", PI=FALSE) + ggtitle("ATM Withdrawals (5/1/2009 - 4/30/2010)") 
+```
+
+We'll start with ATM #1:
+
+```{r}
+autoplot(atm1ts) + ggtitle("ATM #1 Withdrawals")
+```
+
+First, we explore an ARIMA model, and auto.arima selects an ARIMA(0,0,2) model for us. This has an AICc of 3622.64 and a RMSE of 35.63. When we plot it, we see that it is more of a consistent flat line throughout the month of May, and this is probably not realistic if we look at how the series behaves in its day to day variations, so it makes sense to look into other models as well.
+
+```{r}
+fit <- auto.arima(atm1ts)
+summary(fit)
+fc <- forecast(fit, h=31) 
+autoplot(fc)
+```
+
+We also considered Holt-Winters' method for forecasting this series, including regular, damped and Box Cox transformation variations. All three had smaller RMSE values than the forecast with the ARIMA model, and they also visually appeared to behave more realistically in their trends. The damped HW model has the smallest RMSE at 26.5, so we choose it to forecast withdrawals for ATM # 1.
+
+```{r}
+atm1ts2 <- ts(atm1ts, frequency = 7)
+atm1.hw <- hw(atm1ts2, h = 31)
+autoplot(atm1.hw)
+
+atm1.hw.damped <- hw(atm1ts2, damped = TRUE, h = 31)
+autoplot(atm1.hw.damped)
+
+atm1.hw.boxcox <- hw(atm1ts2, lambda = BoxCox.lambda(atm1ts2), h=31)
+autoplot(atm1.hw.boxcox)
+
+accuracy(atm1.hw)
+accuracy(atm1.hw.damped)
+accuracy(atm1.hw.boxcox)
+
+atm1may <- data.frame(Y=as.matrix(round(atm1.hw.damped$mean)))
+```
+
+ATM #2:
+
+```{r}
+autoplot(atm2ts) + ggtitle("ATM #2 Withdrawals")
+```
+
+Again, we explore an ARIMA model first, and auto.arima selects an ARIMA(5,1,4) model for us. This has an AICc of 3473.93 and a RMSE of 28.27. The forecast seems to continue and simulate a lot of the variation that we see in the series, but it looks like it takes on more conservative smaller variables than the original series alludes to.
+
+```{r}
+fit2 <- auto.arima(atm2ts)
+summary(fit2)
+fc2 <- forecast(fit2, h=31) 
+autoplot(fc2)
+```
+
+Again, we try the three variations of the HW model (regular, damped and Box Cox transformation), and all except for the Box Cox transformation perform better than the ARIMA(5,1,4) model in terms of their RMSE. Visually, the regular and damped models also appear better than the other models in their forecast of withdrawals for ATM # 2. The damped HW model performs best, so we choose it for our forecast.
+
+```{r}
+atm2ts2 <- ts(atm2ts, frequency = 7)
+atm2.hw <- hw(atm2ts2, h = 31)
+autoplot(atm2.hw)
+
+atm2.hw.damped <- hw(atm2ts2, damped = TRUE, h = 31)
+autoplot(atm2.hw.damped)
+
+atm2.hw.boxcox <- hw(atm2ts2, lambda = BoxCox.lambda(atm2ts2), h=31)
+autoplot(atm2.hw.boxcox)
+
+accuracy(atm2.hw)
+accuracy(atm2.hw.damped)
+accuracy(atm2.hw.boxcox)
+
+atm2may <- data.frame(Y=as.matrix(round(atm2.hw.damped$mean)))
+```
+
+ATM #3:
+
+```{r}
+autoplot(atm3ts) + ggtitle("ATM #3 Withdrawals")
+```
+
+This ATM is more difficult to forecast as it was only withdrawn from on 3 separate days according to the data. This leaves us with limited options. We can either hold off on forecasting for this ATM, or create a forecast to implement in the short term until more data is collected. These three observations are at the end of the series, so we focus on just these points and do as is commonly done when we have limited data points: a mean forecast.
+
+```{r}
+head(atm3[atm3$Cash != 0,])
+```
+
+```{r}
+atm3.2 <- atm3[atm3$Cash != 0,]
+atm3ts2 <- ts(atm3.2)
+
+fc3 <- meanf(ts(atm3ts2), h =31)
+autoplot(fc3)
+
+atm3may <- data.frame(Y=as.matrix(round(summary(fc3)$"Point Forecast")))
+```
+
+ATM #4:
+
+```{r}
+autoplot(atm4ts) + ggtitle("ATM #4 Withdrawals")
+```
+
+It seems like this ATM has one considerably large outlier that might affect our forecasts, so we go ahead and impute it with Kalman smoothing.
+
+```{r}
+outlier <- which.max(atm4$Cash)
+atm4 <- atm4[-c(outlier),]
+atm4ts <- ts(atm4)
+atm4ts <- na_kalman(atm4ts)
+
+autoplot(atm4ts) + ggtitle("ATM #4 Withdrawals (after imputing for outlier)")
+```
+
+We then start forecasting withdrawals from this ATM. auto.arima selects an ARIMA(0,0,0) model for us which has an AICc of 5252.17 and a RMSE of 340.31. The forecast is more of a flat line, and I am sure that we can find an alternative that accounts for more of the daily variations in withdrawals.
+
+```{r}
+fit4 <- auto.arima(atm4ts)
+summary(fit4)
+fc4 <- forecast(fit4, h=31) 
+autoplot(fc4)
+```
+
+All three variations of the Holt-Winters' method have smaller RMSE values than the ARIMA(0,0,0) model. Of the three, the damped HW forecast has the smallest RMSE value, so it is the best fit here.
+
+```{r}
+atm4ts2 <- ts(atm4ts, frequency = 7)
+atm4.hw <- hw(atm4ts2, h = 31)
+autoplot(atm4.hw)
+
+atm4.hw.damped <- hw(atm4ts2, damped = TRUE, h = 31)
+autoplot(atm4.hw.damped)
+
+atm4.hw.boxcox <- hw(atm4ts2, lambda = BoxCox.lambda(atm4ts2), h=31)
+autoplot(atm4.hw.boxcox)
+
+accuracy(atm4.hw)
+accuracy(atm4.hw.damped)
+accuracy(atm4.hw.boxcox)
+
+atm4may <- data.frame(Y=as.matrix(atm1.hw.damped$mean))
+```
+
+These forecasts should ultimately help the ATM operators better estimate utilization in order to ensure that the ATMs have enough cash available to meet each individualized demand. This is something that is already being done by many operators, or at least the largest ones. I have provided daily ATM withdrawal forecasts for May 2010 in a separate file.
+
+```{r}
+atmfc <- cbind(atm1may, atm2may, atm3may, atm4may)
+names(atmfc) <- c("ATM1", "ATM2", "ATM3", "ATM4")
+write.csv(atmfc,"atm_forecasts_OP.csv")
+```
+
+### Part B – Forecasting Power
+
+Part B consists of a simple dataset of residential power usage for January 1998 until December 2013.  Your assignment is to model these data and a monthly forecast for 2014.  The data is given in a single file.  The variable ‘KWH’ is power consumption in Kilowatt hours, the rest is straight forward. Add this to your existing files above. 
+
+We start by loading our dataset, dropping any NA values and converting it into a ts object.
+
+```{r}
+pow <- readxl::read_excel("ResidentialCustomerForecastLoad-624.xlsx")
+pow <- drop_na(pow)
+powts <- ts(pow[,"KWH"], frequency = 12)
+autoplot(powts) + ggtitle("Residential power usage (January 1998-December 2013)")
+```
+
+It seems that we have an outlier here that would drive our forecasts down, so we go ahead and impute it using Kalman smoothing.
+
+There is an upward trend in the series with power usage increasing over the years, possibly due to an increase in population size or dependence on electricity. There also seems to be a seasonal component to this series with more power being used in the summer and winter months rather than in the fall and spring.
+
+```{r}
+outlier2 <- which.min(pow$KWH)
+pow <- pow[-c(outlier2),]
+powts <- ts(pow[,"KWH"], frequency = 12)
+powts <- na_kalman(powts)
+autoplot(powts) + ggtitle("Residential power usage with imputation for outlier removed (Jan 1998-Dec 2013)")
+ggseasonplot(powts, polar = TRUE)
+```
+
+We use auto.arima to produce an ARIMA(2,1,2)(1,0,1)[12] model with drift, and visually it appears to accurately depict what the next 12 months of power usage would be considering the trend of the series. This forecast has a RMSE value of 813275.5.
+
+```{r}
+fit5 <- auto.arima(powts)
+summary(fit5)
+fc5 <- forecast(fit5, h=12) 
+autoplot(fc5)
+```
+
+We also considered HW forecasts for power usage. The HW forecast with the Box Cox transformation performed the best coming in with the lowest RMSE value, and this forecast also beats out the ARIMA model.
+
+```{r}
+pow.hw <- hw(powts, h = 12, seasonal = "multiplicative")
+autoplot(pow.hw)
+
+pow.hw.damped <- hw(powts, damped = TRUE, h = 12)
+autoplot(pow.hw.damped)
+
+pow.hw.boxcox <- hw(powts, lambda = BoxCox.lambda(powts), h=12)
+autoplot(pow.hw.boxcox)
+
+accuracy(pow.hw)
+accuracy(pow.hw.damped)
+accuracy(pow.hw.boxcox)
+
+pow2014 <- data.frame(Y=as.matrix(pow.hw.damped$mean))
+```
+
+We provide these monthly forecasts for 2014 in a .csv file. This should help project demand and prepare capacity accordingly.
+
+```{r}
+write.csv(pow2014,"power_forecasts_OP.csv")
+```

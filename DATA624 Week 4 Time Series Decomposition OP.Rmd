@@ -1,0 +1,98 @@
+---
+title: "DATA624 Homework 3 Time Series Decomposition"
+author: "Omar Pineda"
+date: "2/17/2020"
+output: html_document
+---
+
+Assignment: Exercises 6.2 and 6.3 from the HA textbook
+
+
+```{r initialize}
+library(fpp2)
+```
+
+6.2
+
+The plastics data set consists of the monthly sales (in thousands) of product A for a plastics manufacturer for five years.
+
+a. Plot the time series of sales of product A. Can you identify seasonal fluctuations and/or a trend-cycle?
+
+There is some seasonality in this series as sales are lower in the winter and higher in the summer. There is also an upward trend in the series.
+
+```{r}
+help(plastics)
+autoplot(plastics) + ggtitle("Sales of product A") + xlab("Year") + ylab("Sales")
+ggseasonplot(plastics, polar = TRUE)
+```
+
+b. Use a classical multiplicative decomposition to calculate the trend-cycle and seasonal indices.
+
+```{r}
+classMulti <- plastics %>% decompose(type="multiplicative")
+  
+autoplot(classMulti) + ggtitle("Classical multiplicative decomposition of product A sales")
+```
+
+c. Do the results support the graphical interpretation from part a?
+
+As we stated in part a, there is an upward trend througout most of this series, though it seems to taper off towards its end. The seasonality is also corroborated in this decomposition.
+
+d. Compute and plot the seasonally adjusted data.
+
+This plot removes the seasonality from the series so that we just see the trend and remainder components.
+
+```{r}
+autoplot(seasadj(classMulti)) + ggtitle("Sales of product A (Seasonally Adjusted)") + xlab("Year") + ylab("Sales")
+```
+
+e. Change one observation to be an outlier (e.g., add 500 to one observation), and recompute the seasonally adjusted data. What is the effect of the outlier?
+
+This outlier generally brings the entire series up, but there is the obvious spike and there are points were some original small dips become more extremely negative as a result of the outlier.
+
+```{r}
+plastics2 <- plastics
+plastics2[26] <- plastics2[26]+500
+
+classMulti2 <- plastics2 %>% decompose(type="multiplicative")
+
+autoplot(seasadj(classMulti2), series = "With outlier") + ggtitle("Sales of product A (Seasonally Adjusted)") + xlab("Year") + ylab("Sales") + autolayer(seasadj(classMulti), series = "Without outlier")
+```
+
+f. Does it make any difference if the outlier is near the end rather than in the middle of the time series?
+
+If the outlier is more towards the end of the series, the large spike happens later on and overall the series differs from the original series less than when the outlier is in the middle.
+
+```{r}
+plastics3 <- plastics
+plastics3[45] <- plastics3[45]+500
+
+classMulti3 <- plastics3 %>% decompose(type="multiplicative")
+
+autoplot(seasadj(classMulti2), series = "With outlier in middle") + ggtitle("Sales of product A (Seasonally Adjusted)") + xlab("Year") + ylab("Sales") + autolayer(seasadj(classMulti), series = "Without outlier") + autolayer(seasadj(classMulti3), series = "With outlier towards end")
+```
+
+6.3 
+
+Recall your retail time series data (from Exercise 3 in Section 2.10). Decompose the series using X11. Does it reveal any outliers, or unusual features that you had not noticed previously?
+
+First, we retrieve the retail series that we previously used and plot it.
+
+```{r}
+retaildata <- readxl::read_excel("retail.xlsx", skip=1) #The second argument (skip=1) is required because the Excel sheet has two header rows.
+
+myts <- ts(retaildata[,"A3349415T"],
+  frequency=12, start=c(1982,4))
+
+autoplot(myts) + ggtitle("Australian Retail")
+```
+
+Then we decompose the series using X11 decomposition. 
+
+I'm not sure if the decomposition reveals much that we couldn't tell before as the trend is similar to that of the original series. It's interesting seeing the seasonal component in the decomposition as the effect seems to intensify as the series matures. There are outliers/spikes throughout the series but the negative and the positve seem to balance eachother out. As we found in the previous exercise, the outliers earlier on in the series have a stronger overall influence on how the series behaves.
+
+```{r}
+library(seasonal)
+x11Decom <- myts %>% seas(x11="")
+autoplot(x11Decom, series = "X11 decomposition") + ggtitle("Australian Retail")
+```

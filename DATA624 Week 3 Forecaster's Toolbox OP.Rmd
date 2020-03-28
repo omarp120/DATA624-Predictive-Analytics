@@ -1,0 +1,152 @@
+---
+title: "DATA624 Homework 2 Forecaster's Toolbox"
+author: "Omar Pineda"
+date: "2/10/2020"
+output: html_document
+---
+
+Assignment: Exercises 3.1, 3.2, 3.3 and 3.8 from the HA textbook
+
+
+```{r initialize}
+library(fpp2)
+```
+
+3.1
+For the following series, find an appropriate Box-Cox transformation in order to stabilise the variance.
+
+The optimal Box-Cox transformation for usnetelec uses a lambda value of 0.52. According to HA, this is is the lambda that makes the size of the seasonal variation about the same across the whole series. You can see the original series along with the transformed series in the below plot. The transformed series appears to be smoother.
+
+```{r}
+help(usnetelec)
+lambda1 <- BoxCox.lambda(usnetelec)
+usnetelecBoxcox <- BoxCox(usnetelec, lambda1)
+usnetelecComb <- cbind(usnetelec, usnetelecBoxcox)
+autoplot(usnetelecComb, facet = TRUE) + ggtitle("US Net Electricity Generation 1949-2003")
+```
+
+The lambda value for usgdp's Box-Cox transformation is 0.37, and again, this transformed series appears more condensed and smoother compared to the original series.
+
+```{r}
+help(usgdp)
+lambda2 <- BoxCox.lambda(usgdp)
+usgdpBoxcox <- BoxCox(usgdp, lambda2)
+usgdpComb <- cbind(usgdp, usgdpBoxcox)
+autoplot(usgdpComb, facet = TRUE) + ggtitle("Quarterly US GDP 1947Q1-2006Q1")
+```
+
+The lambda for mcopper's Box-Cox transformation is 0.19, and this transformation namely makes the spike at its end seem less drastic than in the original series.
+
+```{r}
+help(mcopper)
+lambda3 <- BoxCox.lambda(mcopper)
+mcopperBoxcox <- BoxCox(mcopper, lambda3)
+mcopperComb <- cbind(mcopper, mcopperBoxcox)
+autoplot(mcopperComb, facet = TRUE) + ggtitle("Monthly Copper Prices")
+```
+
+The lambda for enplanements's Box-Cox transformation is -0.23, and this transformation makes the beginning of the series more volatile while making the end of the series less volatile compared to the original series.
+
+```{r}
+help(enplanements)
+lambda4 <- BoxCox.lambda(enplanements)
+enplanementsBoxcox <- BoxCox(enplanements, lambda4)
+enplanementsComb <- cbind(enplanements, enplanementsBoxcox)
+autoplot(enplanementsComb, facet = TRUE) + ggtitle("Monthly US Domestic Enplanements")
+```
+
+3.2
+Why is a Box-Cox transformation unhelpful for the cangas data?
+
+I would say that the Box-Cox transformation is unhelpful for this data as the series does not appear to change much post transformation. This is especially true when we look at the scales of the original and transformed series side by side--they are not different by much compared to what we see with the series that we previously transformed.
+
+```{r}
+help(cangas)
+lambda5 <- BoxCox.lambda(cangas)
+cangasBoxcox <- BoxCox(cangas, lambda5)
+cangasComb <- cbind(cangas, cangasBoxcox)
+autoplot(cangasComb, facet = TRUE) + ggtitle("Monthly Canadian Gas Production January 1960-February 2005")
+```
+
+3.3
+What Box-Cox transformation would you select for your retail data (from Exercise 3 in Section 2.10)?
+
+First, we retrive the series that we explored in the previous assignment.
+
+```{r}
+retaildata <- readxl::read_excel("retail.xlsx", skip=1) #The second argument (skip=1) is required because the Excel sheet has two header rows.
+
+myts <- ts(retaildata[,"A3349415T"],
+  frequency=12, start=c(1982,4))
+```
+
+We can then see how this series appears after a Box-Cox transformation that uses a lambda of -0.24. The heightened peaks due to seasonal effects in the original series are more stabilized in the transformed series.
+
+```{r}
+lambda6 <- BoxCox.lambda(myts)
+mytsBoxcox <- BoxCox(myts, lambda6)
+mytsComb <- cbind(myts, mytsBoxcox)
+autoplot(mytsComb, facet = TRUE) + ggtitle("Australian Retail")
+```
+
+3.8
+For your retail time series (from Exercise 3 in Section 2.10):
+
+a. Split the data into two parts using
+
+```{r}
+myts.train <- window(myts, end=c(2010,12))
+myts.test <- window(myts, start=2011)
+```
+
+b. Check that your data have been split appropriately by producing the following plot.
+
+```{r}
+autoplot(myts) +
+  autolayer(myts.train, series="Training") +
+  autolayer(myts.test, series="Test")
+```
+
+c. Calculate forecasts using snaive applied to myts.train.
+
+```{r}
+fc <- snaive(myts.train)
+```
+
+d.Compare the accuracy of your forecasts against the actual values stored in myts.test.
+
+```{r}
+accuracy(fc,myts.test)
+```
+
+e. Check the residuals. Do the residuals appear to be uncorrelated and normally distributed?
+
+The mean of the residuals is close to zero and there appears to be little to no no correlation in the residual series. They also appear to be nearly normally distributed when we look at the histogram.
+
+```{r}
+checkresiduals(fc)
+```
+
+f. How sensitive are the accuracy measures to the training/test split?
+
+We can see this sensitivity by trying out different splits and seeing how the accuracy changes. The splits we used train the model on data through 2000, 2005, or 2010 and the differing accuracy results ultimately show that the measures are very sensitive to the training/test split. I think that we would see larger discrepancies for some other series that have worse outcomes in their residuals.
+
+```{r}
+myts.train2 <- window(myts, end=c(2000,12))
+myts.test2 <- window(myts, start=2001)
+
+myts.train3 <- window(myts, end=c(2005,12))
+myts.test3 <- window(myts, start=2006)
+
+fc2 <- snaive(myts.train2)
+fc3 <- snaive(myts.train3)
+
+autoplot(myts) +
+  autolayer(fc2, series="Trained through 2000", PI = FALSE) +
+  autolayer(fc3, series="Trained through 2005", PI = FALSE) +
+  autolayer(fc, series="Trained through 2010", PI = FALSE) 
+
+accuracy(fc,myts.test)
+accuracy(fc2,myts.test2)
+accuracy(fc3,myts.test3)
+```

@@ -1,0 +1,145 @@
+---
+title: "DATA624 Homework 4 Data Preprocessing and Overfitting"
+author: "Omar Pineda"
+date: "2/25/2020"
+output: html_document
+---
+
+Assignment: Exercises 3.1, 3.2 from the KJ textbook
+
+```{r load}
+library(mlbench)
+library(corrr)
+library(tidyr)
+library(dplyr)
+library(igraph)
+library(ggraph)
+library(e1071)
+library(car)
+library(caret)
+library(ggplot2)
+library(finalfit)
+library(plyr)
+library(DMwR)
+```
+
+3.1. The UC Irvine Machine Learning Repository contains a data set related to glass identification. The data consist of 214 glass samples labeled as one of seven class categories. There are nine predictors, including the refractive index and percentages of eight elements: Na, Mg, Al, Si, K, Ca, Ba, and Fe. The data can be accessed via:
+
+```{r}
+data(Glass)
+str(Glass)
+```
+
+(a) Using visualizations, explore the predictor variables to understand their distributions as well as the relationships between predictors.
+
+By looking at a boxplot of the predictors, we can see that the glass samples tend to have higher values for Si while the Na and Ca predictors have larger ranges. Ca seems to have the most outliers and K is right-skewed.
+
+```{r}
+df <- Glass[,1:9]
+boxplot(df)
+```
+
+A correlation matrix shows us that correlation coefficients between each of the 9 predictors. We can use this to create a correlation matrix that visualizes the relationships that the predictors have with one another. Si and Ca are the most correlated with the refractive index with Ca being postively correlated and Si being negatively correlated.
+
+```{r}
+correlation <- correlate(df)
+correlation
+#Correlation network for variables
+tidy_cors <- df %>% 
+  correlate() %>% 
+  stretch()
+tidy_cors
+graph_cors <- tidy_cors %>%
+  filter(abs(r) > .3) %>%
+  graph_from_data_frame(directed = FALSE)
+ggraph(graph_cors) +
+  geom_edge_link(aes(edge_alpha = abs(r), edge_width = abs(r), color = r)) +
+  guides(edge_alpha = "none", edge_width = "none") +
+  scale_edge_colour_gradientn(limits = c(-1, 1), colors = c("firebrick2", "dodgerblue2")) +
+  geom_node_point(color = "grey", size = 2) +
+  geom_node_text(aes(label = name), repel = FALSE) +
+  theme_graph()
+```
+
+(b) Do there appear to be any outliers in the data? Are any predictors skewed?
+
+Ca seems to have the most outliers, but K, Na and Ba seem to have a considerable number of outliers as well. K and Ba are both very right-skewed, and Ca also seems to be right-skewed.
+
+(c) Are there any relevant transformations of one or more predictors that might improve the classification model?
+
+We calculate our skewness statistics for our predictors and confirm that K is the most skewed, but Ba, Ca and RI can also be considered highly skewed as their skewness values are greater than 1.
+
+```{r}
+skewValues <- apply(df, 2, skewness)
+skewValues
+```
+
+We can use the powerTransform function to calculate lambda values and decide which transformations would be best for these predictors. Based on these results, we would use a square root transformation on Ca, log transformation on K, no transformation on Al or Na, and a square transformation on Mg. The other variables may benefit from other transformations as well.
+
+```{r}
+summary(powerTransform(df[,2:9], family="yjPower")) #removed the RI variable as it was throwing errors
+```
+3.2. The soybean data can also be found at the UC Irvine Machine Learning Repository. Data were collected to predict disease in 683 soybeans. The 35 predictors are mostly categorical and include information on the environmental conditions (e.g., temperature, precipitation) and plant conditions (e.g., left spots, mold growth). The outcome labels consist of 19 distinct classes.
+
+The data can be loaded via:
+
+```{r}
+data(Soybean)
+str(Soybean)
+?Soybean
+```
+
+(a) Investigate the frequency distributions for the categorical predictors. Are any of the distributions degenerate in the ways discussed earlier in this chapter?
+
+A predictor has a degenerate distribution if it only takes on a single possible value or have a handful of distinct values with very low frequencies. These are also called near zero variance predictors, and we can identify them using the nearZeroVar function. Using this, we identify lead.mild, mycelium and sclerotia for possible removal in our model.
+
+```{r}
+nearZeroVar(Soybean, names = TRUE)
+
+barplot(table(Soybean$leaf.mild))
+barplot(table(Soybean$mycelium))
+barplot(table(Soybean$sclerotia))
+```
+
+(b) Roughly 18 % of the data are missing. Are there particular predictors that are more likely to be missing? Is the pattern of missing data related to the classes?
+
+We can see a plot of the percentage of missing data by predictor. The sever, seed.tmt, lodging and hail predictors are tied for having the most missing data.
+
+```{r}
+results <- sapply(Soybean, function(x) sum(is.na(x)))
+results <- results/683*100
+results <- as.data.frame(results)
+results <- cbind(predictor = rownames(results), results)
+rownames(results) <- 1:nrow(results)
+
+ggplot(results, aes(x=reorder(predictor, results), y = results)) +
+  geom_bar(stat= "identity", fill = "#0073C2FF", width = 1) +
+  ylab("% of missing values") +
+  xlab("Predictor") +
+  ggtitle("Missing values for predictors") +
+  theme(text=element_text(size=6), panel.grid.major = element_blank(), panel.grid.minor = element_blank(),panel.background = element_blank(), axis.line = element_line(colour = "black")) +
+  coord_flip()
+```
+
+The following plot shows how missing data in any of the predictors relates to the Class variable. Red indicates a combination of missing values between the predictor and Class variable. 
+
+```{r}
+explanatory <- c(colnames(Soybean[,-1]))
+dependent <- "Class"
+Soybean %>% missing_pattern(dependent, explanatory)
+```
+
+The phytophthora-rot class has the most missing values.
+
+```{r}
+ddply(Soybean, .(Class), colwise(.fun = function(x) sum(is.na(x))))
+```
+
+(c) Develop a strategy for handling missing data, either by eliminating predictors or imputation.
+
+I'll use knn imputation since I have not used it before for imputation and would like to learn more about it. This imputes a missing value with the average weighted value of observations near/similar to it. We perform this imputation on all variables except for the response variable.
+
+```{r}
+knnOutput <- knnImputation(Soybean[, !names(Soybean) %in% "Class"])
+anyNA(knnOutput)
+```

@@ -1,0 +1,266 @@
+---
+title: "DATA624 Homework 6 ARIMA"
+author: "Omar Pineda"
+date: "3/9/2020"
+output: html_document
+---
+
+Assignment: Exercises 8.1, 8.2, 8.3, 8.5., 8.6, and 8.7 from the HA textbook
+
+```{r load}
+library(fpp2)
+```
+
+8.1 
+Figure 8.31 shows the ACFs for 36 random numbers, 360 random numbers and 1,000 random numbers.
+
+a. Explain the differences among these figures. Do they all indicate that the data are white noise?
+
+All data are white noise and the difference between them is the interval for the critical values.
+
+b. Why are the critical values at different distances from the mean of zero? Why are the autocorrelations different in each figure when they each refer to white noise?
+
+The critical values are different distances because they depend on the number of observations.
+
+8.2
+A classic example of a non-stationary series is the daily closing IBM stock price series (data set ibmclose). Use R to plot the daily closing prices for IBM stock and the ACF and PACF. Explain how each plot shows that the series is non-stationary and should be differenced.
+
+The ACF does not drop to zero relatively quickly, so it is non-stationary and should be differenced. When we look at PACF, we see that the first value is too high, indiciating a non-stationary series.
+
+```{r}
+ggtsdisplay(ibmclose)
+```
+8.3
+For the following series, find an appropriate Box-Cox transformation and order of differencing in order to obtain stationary data.
+
+a. usnetelec
+
+Based on the decreasing ACF, this series is already nearly stationary, so we just apply a differencing of order 1.
+
+```{r}
+ggtsdisplay(usnetelec)
+usnetelec %>% diff() %>% ggtsdisplay()
+```
+
+b. usgdp
+
+Looking at the ACF, the series does not appear stationary. The lambda for our Box Cox transformation is 0.366 to stabilize the variance and the order of differencing is 2 to make the series stationary. 
+
+```{r}
+ggtsdisplay(usgdp)
+
+l1 <- BoxCox.lambda(usgdp)
+l1
+
+usnetelec %>% BoxCox(l1) %>% diff() %>% diff() %>% ggtsdisplay()
+```
+
+c. mcopper
+
+Looking at the ACF, the series does not appear stationary. The lambda for our Box Cox transformation is 0.1919047 to stabilize the variance and the order of differencing is 1 to make the series stationary. 
+
+```{r}
+ggtsdisplay(mcopper)
+
+l2 <- BoxCox.lambda(mcopper)
+l2
+
+mcopper %>% BoxCox(l2) %>% diff() %>% ggtsdisplay()
+```
+d. enplanements
+
+Looking at the ACF, the series does not appear stationary. The lambda for our Box Cox transformation is -0.2269461 to stabilize the variance and the order of differencing is 2 to make the series stationary. The first differencing uses a lag of 12 as that was the recurring interval at which we saw a spike in the ACF.
+
+```{r}
+ggtsdisplay(enplanements)
+
+l3 <- BoxCox.lambda(enplanements)
+l3
+
+enplanements %>% BoxCox(l3) %>% diff(12) %>% diff() %>% ggtsdisplay()
+```
+
+e. visitors
+
+Looking at the ACF, the series does not appear stationary. The lambda for our Box Cox transformation is  0.2775249 to stabilize the variance and the order of differencing is 2 to make the series stationary. The first differencing uses a lag of 12 as that was the recurring interval at which we saw a spike in the ACF.
+
+```{r}
+ggtsdisplay(visitors)
+
+l4 <- BoxCox.lambda(visitors)
+l4
+
+visitors %>% BoxCox(l4) %>% diff(12) %>% diff() %>% ggtsdisplay()
+```
+8.5
+
+For your retail data (from Exercise 3 in Section 2.10), find the appropriate order of differencing (after transformation if necessary) to obtain stationary data.
+
+First, we retrieve the retail series that we previously used and plot it.
+
+```{r}
+retaildata <- readxl::read_excel("retail.xlsx", skip=1) #The second argument (skip=1) is required because the Excel sheet has two header rows.
+
+myts <- ts(retaildata[,"A3349415T"],
+  frequency=12, start=c(1982,4))
+
+autoplot(myts) + ggtitle("Australian Retail")
+```
+
+Looking at the ACF, the series does not appear stationary. The lambda for our Box Cox transformation is  -0.2411913 to stabilize the variance and the order of differencing is 2 to make the series stationary. The first differencing uses a lag of 12 as that was the recurring interval at which we saw a spike in the ACF.
+
+```{r}
+ggtsdisplay(myts)
+
+l5 <- BoxCox.lambda(myts)
+l5
+
+myts %>% BoxCox(l5) %>% diff(12) %>% diff() %>% ggtsdisplay()
+```
+
+8.6
+Use R to simulate and plot some data from simple ARIMA models.
+
+a. Use the following R code to generate data from an AR(1) model with \(\phi_{1} = 0.6\) and \(\sigma^2=1\). The process starts with \(y_1=0\).
+
+```{r}
+y <- ts(numeric(100))
+e <- rnorm(100)
+for(i in 2:100)
+  y[i] <- 0.6*y[i-1] + e[i]
+```
+
+b. Produce a time plot for the series. How does the plot change as you change \(\phi_1\)?
+
+If we decrease this value, the series seems to decrease overall, with some spikes here and there. If we increase this value, the series increases overall but is lower than the original series at some points.
+
+```{r}
+y2 <- ts(numeric(100))
+for(i in 2:100)
+  y2[i] <- 0.1*y[i-1] + e[i]
+
+y3 <- ts(numeric(100))
+for(i in 2:100)
+  y3[i] <- 0.9*y[i-1] + e[i]
+
+autoplot(y, series = "0.6 (Original)") + autolayer(y2, series = "0.1", PI=FALSE) + autolayer(y3, series = "0.9", PI=FALSE)
+```
+
+c. Write your own code to generate data from an MA(1) model with \(\theta_{1} = 0.6\) and \(\sigma^2=1\).
+
+```{r}
+y4 <- ts(numeric(100))
+e2 <- rnorm(100, sd=1)
+e2[1] <- 0
+for(i in 2:100)
+  y4[i] <- 0.6*e2[i-1] + e2[i]
+```
+
+d. Produce a time plot for the series. How does the plot change as you change \(\theta_1\)?
+
+As theta decreases, the series seems to take on smaller values than the original series, and the series takes on larger values than the original series when theta increases.
+
+```{r}
+y5 <- ts(numeric(100))
+e2 <- rnorm(100, sd=1)
+e2[1] <- 0
+for(i in 2:100)
+  y5[i] <- 0.1*e2[i-1] + e2[i]
+
+y6 <- ts(numeric(100))
+e2 <- rnorm(100, sd=1)
+e2[1] <- 0
+for(i in 2:100)
+  y6[i] <- 0.9*e2[i-1] + e2[i]
+
+autoplot(y4, series = "0.6 (Original)") + autolayer(y5, series = "0.1", PI=FALSE) + autolayer(y6, series = "0.9", PI=FALSE)
+```
+e. Generate data from an ARMA(1,1) model with \(\phi_{1} = 0.6\), \(\theta_{1} = 0.6\) and \(\sigma^2=1\).
+
+```{r}
+y7 <- ts(numeric(100))
+e3 <- rnorm(100, sd=1)
+e3[1] <- 0
+for(i in 2:100)
+  y7[i] <- 0.6*y7[i-1] + 0.6*e3[i-1] + e3[i]
+
+autoplot(y7)
+```
+
+f. Generate data from an AR(2) model with \(\phi_{1} =-0.8\), \(\phi_{2} = 0.3\) and \(\sigma^2=1\). (Note that these parameters will give a non-stationary series.)
+
+```{r}
+y8 <- ts(numeric(100))
+e4 <- rnorm(100, sd=1)
+e4[1] <- 0
+for(i in 3:100)
+  y8[i] <- -0.8*y8[i-1] + 0.3*y8[i-2] + e4[i]
+
+autoplot(y8)
+```
+
+g. Graph the latter two series and compare them.
+
+The AR(2) model oscillates to take on very large values while the ARMA(1,1) model takes on modest values in comparison.
+
+```{r}
+autoplot(y8) + autolayer(y7)
+```
+
+8.7
+Consider wmurders, the number of women murdered each year (per 100,000 standard population) in the United States.
+
+a. By studying appropriate graphs of the series in R, find an appropriate ARIMA(p,d,q) model for these data.
+
+First, we perform a Box Cox transformation on our series using a lambda of -0.09529835 to stabilize the variance. We then difference our series once to make it stationary. We use ARIMA(0,1,2) because we see p = 0 autoregressive terms, d = 1 difference is needed for stationary, and there are q = 2 lagged forecast errors.
+
+```{r}
+ggtsdisplay(wmurders)
+
+l6 <- BoxCox.lambda(wmurders)
+l6
+
+wmurders %>% BoxCox(l6) %>% diff() %>% ggtsdisplay()
+wm2 <- wmurders %>% BoxCox(l6) %>% diff()
+```
+b. Should you include a constant in the model? Explain.
+
+We should not include a constant in the model because there doesn't seem to be any drift in the original series.
+
+c. Write this model in terms of the backshift operator.
+
+(1+theta1xB+theta2xB^2)e
+
+d. Fit the model using R and examine the residuals. Is the model satisfactory?
+
+The model seems satisfactory as the residuals are normally distributed and the ACF of the residuals are within the critical interval.
+
+```{r}
+fit <- Arima(wmurders, order=c(0,1,2))
+checkresiduals(fit)
+```
+
+e. Forecast three times ahead. Check your forecasts by hand to make sure that you know how they have been calculated.
+
+The forecasts we calculated by hand match what has been calculated for us here.
+
+```{r}
+fc <- fit %>% forecast(h=3) 
+fc
+autoplot(fc, PI=FALSE)
+```
+f. Create a plot of the series with forecasts and prediction intervals for the next three periods shown.
+
+```{r}
+autoplot(fc)
+```
+
+g. Does auto.arima() give the same model you have chosen? If not, which model do you think is better?
+
+auto.arima() suggests ARIM(1,2,1) while we used ARIMA(0,1,2). The model that we chose has a smaller AICc value, so we would choose it as the better model.
+
+```{r}
+fit2 <- auto.arima(wmurders)
+summary(fit2)
+summary(fit)
+```
