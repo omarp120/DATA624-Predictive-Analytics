@@ -1,0 +1,168 @@
+---
+title: "DATA624 Homework 7 Linear Regression"
+author: "Omar Pineda"
+date: "3/30/2020"
+output: html_document
+---
+
+Assignment: Exercises 6.2 and 6.3 from the KJ textbook
+
+```{r}
+library(caTools)
+library(pls)
+library(caret)
+library(glmnet)
+library(DMwR)
+```
+
+6.2. Developing a model to predict permeability (see Sect. 1.4) could save significant resources for a pharmaceutical company, while at the same time more rapidly identifying molecules that have a sufficient permeability to become a drug:
+
+(a) Start R and use these commands to load the data:
+
+```{r}
+library(AppliedPredictiveModeling)
+data(permeability)
+```
+
+The matrix fingerprints contains the 1,107 binary molecular predictors for the 165 compounds, while permeability contains permeability response.
+
+(b) The fingerprint predictors indicate the presence or absence of substructures of a molecule and are often sparse meaning that relatively few of the molecules contain each substructure. Filter out the predictors that have low frequencies using the nearZeroVar function from the caret package. How many predictors are left for modeling?
+
+fingerprints originally has 1,107 predictors, and applying nearZeroVar leaves us with 388 predictors. We also convert the fingerprints matrix into a data frame and append the permeability response variable to it.
+
+```{r}
+ncol(fingerprints)
+f2 <- as.data.frame(fingerprints[, -nearZeroVar(fingerprints)])
+ncol(f2)
+
+f2$permeability <- permeability
+```
+
+(c) Split the data into a training and a test set, pre-process the data, and tune a PLS model. How many latent variables are optimal and what is the corresponding resampled estimate of R2?
+
+We do an 80/20 split on our dataset for training and testing of our model. The resampled estimate of R^2 for the optimal model is 0.385.
+
+```{r}
+set.seed(101) 
+sample2 = sample.split(f2$X1, SplitRatio = .8)
+train2 = subset(f2, sample2 == TRUE)
+test2  = subset(f2, sample2 == FALSE)
+
+train2.X = subset(train2, select = -permeability)
+train2.y = as.double(train2[,389])
+```
+
+```{r}
+set.seed(42)
+cv_5 = trainControl(method = "cv", number = 5)
+
+pls = train(train2.X, train2.y,
+  method = "pls",
+  trControl = cv_5,
+  tuneLength = 20,
+  preProc = c("center", "scale")
+)
+
+pls
+```
+
+(d) Predict the response for the test set. What is the test set estimate of R2?
+
+The test set estimate of R^2 is 0.676 which is more than the 0.38 that we got from training the model.
+
+```{r}
+test2.y <- as.double(test2[,389])
+results2 <- predict(pls, test2)
+postResample(results2, test2.y)
+```
+
+(e) Try building other models discussed in this chapter. Do any have better predictive performance? 
+
+We also attempt an elastic net model and tuning it resulted in a model that was about equal parts Ridge and Lasso with an R^2 of 0.436 instead of the 0.38 that we got for the training of the PLS. The R^2 of our test set is slightly lower than what we saw with PLS at 0.611 versus 0.676.
+
+```{r}
+fenet = train(
+  permeability~ ., data = train2,
+  method = "glmnet",
+  trControl = cv_5
+)
+
+fenet
+```
+
+```{r}
+results3 <- predict(fenet, test2)
+postResample(results3, test2.y)
+```
+
+(f) Would you recommend any of your models to replace the permeability laboratory experiment?
+
+I would recommend either of these models but there would need to be a deeper dive and evaluation to decide which would be a better fit.
+
+6.3. A chemical manufacturing process for a pharmaceutical product was discussed in Sect. 1.4. In this problem, the objective is to understand the relationship between biological measurements of the raw materials (predictors), measurements of the manufacturing process (predictors), and the response of product yield. Biological predictors cannot be changed but can be used to assess the quality of the raw material before processing. On the other hand, manufacturing process predictors can be changed in the manufacturing process. Improving product yield by 1% will boost revenue by approximately one hundred thousand dollars per batch:
+
+(a) Start R and use these commands to load the data:
+
+```{r}
+data("ChemicalManufacturingProcess")
+```
+
+The matrix processPredictors contains the 57 predictors (12 describing the input biological material and 45 describing the process predictors) for the 176 manufacturing runs. yield contains the percent yield for each
+run.
+
+(b) A small percentage of cells in the predictor set contain missing values. Use an imputation function to fill in these missing values (e.g., see Sect. 3.8).
+
+We use KNN imputation which imputes a missing value with the average weighted value of observations near/similar to it. We perform this imputation for missing values in all variables except for the response variable, yield.
+
+```{r}
+cmp <- knnImputation(ChemicalManufacturingProcess[, !names(ChemicalManufacturingProcess) %in% "yield"])
+anyNA(cmp)
+```
+
+(c) Split the data into a training and a test set, pre-process the data, and tune a model of your choice from this chapter. What is the optimal value of the performance metric?
+
+First, we split our data, using 80% of it to train the model and holding out the rest for our test set. 
+
+```{r}
+set.seed(101) 
+sample = sample.split(cmp$BiologicalMaterial01, SplitRatio = .8)
+train = subset(cmp, sample == TRUE)
+test  = subset(cmp, sample == FALSE)
+```
+
+Next, we use cross validation with 5 folds and tune an Elastic Net model on the training set. Alpha controls the mix between the ridge and lasso penalties and lambda controls the amount of penalization. The optimal value of the performance metric is the minimized RMSE value (1.24) and R^2 of 0.59 when alpha = 1 and lamda = 0.22. Since alpha = 1, this optimal model is actually a lasso regression.
+
+```{r}
+set.seed(42)
+cv_5 = trainControl(method = "cv", number = 5)
+
+elnet = train(
+  Yield ~ ., data = train,
+  method = "glmnet",
+  trControl = cv_5
+)
+
+elnet
+```
+
+(d) Predict the response for the test set. What is the value of the performance metric and how does this compare with the resampled performance metric on the training set?
+
+The RMSE for the test set is 1.319 which is slightly higher, but not by much, when compared to the 1.24 RMSE that we have with the training set. The R^2 is 0.397 which is less than the 0.59 that we got from training the model.
+
+```{r}
+test.y <- test[,1]
+results <- predict(elnet, s = 0.22, test)
+postResample(results, test.y)
+```
+
+(e) Which predictors are most important in the model you have trained? Do either the biological or process predictors dominate the list?
+
+There are 3 biological and 7 process predictors in our model. The strongest predictors are manufacturing processes, specifically 9, 17 and 32.
+
+```{r}
+coef(elnet$finalModel, elnet$finalModel$lambdaOpt)
+```
+
+(f) Explore the relationships between each of the top predictors and the response. How could this information be helpful in improving yield in future runs of the manufacturing process?
+
+Like we previously mentioned, the strongest predictors for yield are manufacturing processes 9, 17 and 32, but process 17 has a negative effect on yield. It would help to implement more processes similar to 9 and 32 in the production of this pharmaceutical product. Some biological materials also had relatively strong effects on the yield, but those predictors cannot be changed.
