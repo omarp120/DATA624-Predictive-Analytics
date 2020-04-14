@@ -1,0 +1,198 @@
+---
+title: "DATA624 Homework 8 Non Linear Regression"
+author: "Omar Pineda"
+date: "4/6/2020"
+output: html_document
+---
+
+Assignment: Exercises 7.2 and 7.5 from the KJ textbook
+
+```{r}
+library(caTools)
+library(caret)
+library(DMwR)
+library(nnet)
+```
+
+7.2. Friedman (1991) introduced several benchmark data sets create by simulation. One of these simulations used the following nonlinear equation to create data:
+
+y = 10sin(πx1x2) + 20(x3 − 0.5)2 + 10x4 + 5x5 + N(0, σ2)
+
+where the x values are random variables uniformly distributed between [0, 1] (there are also 5 other non-informative variables also created in the simulation). The package mlbench contains a function called mlbench.friedman1 that simulates these data:
+
+```{r}
+library(mlbench)
+set.seed(200)
+trainingData <- mlbench.friedman1(200, sd = 1)
+## We convert the 'x' data from a matrix to a data frame
+## One reason is that this will give the columns names.
+trainingData$x <- data.frame(trainingData$x)
+## Look at the data using
+featurePlot(trainingData$x, trainingData$y)
+## or other methods.
+
+## This creates a list with a vector 'y' and a matrix
+## of predictors 'x'. Also simulate a large test set to
+## estimate the true error rate with good precision:
+testData <- mlbench.friedman1(5000, sd = 1)
+testData$x <- data.frame(testData$x)
+```
+
+Tune several models on these data. For example:
+
+```{r}
+knnModel <- train(x = trainingData$x, y = trainingData$y, method = "knn", preProc = c("center", "scale"), tuneLength = 10)
+knnModel
+```
+
+```{r}
+knnPred <- predict(knnModel, newdata = testData$x)
+## The function 'postResample' can be used to get the test set
+## perforamnce values
+postResample(pred = knnPred, obs = testData$y)
+```
+
+Which models appear to give the best performance? Does MARS select the informative predictors (those named X1–X5)?
+
+We also try out a neural network:
+
+```{r}
+nnetFit <- nnet(trainingData$x, trainingData$y, size = 5, decay = 0.01, linout = TRUE,
+## Reduce the amount of printed output
+trace = FALSE,
+## Expand the number of iterations to find
+## parameter estimates..
+maxit = 500,
+## and the number of parameters used by the model
+MaxNWts = 5 * (ncol(trainingData$x) + 1) + 5 + 1)
+```
+
+```{r}
+nNetPred <- predict(nnetFit, newdata = testData$x)
+postResample(pred = nNetPred, obs = testData$y)
+```
+
+Lastly, we try out a MARS model:
+
+```{r}
+marsFit <- train(x = trainingData$x, y = trainingData$y, method = "earth", preProc = c("center", "scale"), tuneLength = 10)
+```
+
+```{r}
+marsPred <- predict(marsFit, newdata = testData$x)
+postResample(pred = marsPred, obs = testData$y)
+```
+
+```{r}
+summary(marsFit$finalModel)
+```
+
+The neural network is the best performing model with the smallest RMSE and largest R^2 value, and it is followed by MARS and then KNN. The MARS model selects all 5 of the informative predictors as well as X6.
+
+7.5. Exercise 6.3 describes data for a chemical manufacturing process. Use the same data imputation, data splitting, and pre-processing steps as before and train several nonlinear regression models.
+
+```{r}
+#load data
+library(AppliedPredictiveModeling)
+data("ChemicalManufacturingProcess")
+
+#imputation
+cmp <- knnImputation(ChemicalManufacturingProcess[, !names(ChemicalManufacturingProcess) %in% "yield"])
+
+#data splitting
+set.seed(101) 
+sample = sample.split(cmp$BiologicalMaterial01, SplitRatio = .8)
+cmp_train = subset(cmp, sample == TRUE)
+cmp_test  = subset(cmp, sample == FALSE)
+
+cmp_train_X = subset(cmp_train, select = -Yield)
+cmp_train_y = cmp_train[,'Yield']
+
+cmp_test_X = subset(cmp_test, select = -Yield)
+cmp_test_y = cmp_test[,'Yield']
+```
+
+KNN model:
+
+```{r}
+cmpknn <- train(x = cmp_train_X, y = cmp_train_y, method = "knn", preProc = c("center", "scale"), tuneLength = 10)
+cmpknn
+```
+
+```{r}
+cmpknnPred <- predict(cmpknn, newdata = cmp_test_X)
+## The function 'postResample' can be used to get the test set
+## perforamnce values
+postResample(pred = cmpknnPred, obs = cmp_test_y)
+```
+
+Neural Network model:
+
+```{r}
+cmpnnet <- nnet(x = cmp_train_X, y = cmp_train_y, size = 5, decay = 0.01, linout = TRUE, trace = FALSE,
+maxit = 500, MaxNWts = 5 * (ncol(cmp_train_X) + 1) + 5 + 1)
+```
+
+```{r}
+cmpnnetPred <- predict(cmpnnet, newdata = cmp_test_X)
+postResample(pred = cmpnnetPred, obs = cmp_test_y)
+```
+
+MARS model:
+
+```{r}
+cmpmars <- train(x = cmp_train_X, y = cmp_train_y, method = "earth", preProc = c("center", "scale"), tuneLength = 10)
+```
+
+```{r}
+cmpmarsPred <- predict(cmpmars, newdata = cmp_test_X)
+postResample(pred = cmpmarsPred, obs = cmp_test_y)
+```
+
+SVM model:
+
+```{r}
+cmpsvm <- train(x = cmp_train_X, y = cmp_train_y, method = "svmRadial", preProc = c("center", "scale"), tuneLength = 10, trControl = trainControl(method = "cv"))
+```
+
+```{r}
+cmpsvmPred <- predict(cmpsvm, newdata = cmp_test_X)
+postResample(pred = cmpsvmPred, obs = cmp_test_y)
+```
+
+(a) Which nonlinear regression model gives the optimal resampling and test set performance?
+
+SVM gives the optimal resampling and test set performance with a RMSE of 1.21.
+
+(b) Which predictors are most important in the optimal nonlinear regression model? Do either the biological or process variables dominate the list? How do the top ten important predictors compare to the top ten predictors from the optimal linear model?
+
+Here are the 10 predictors from the optimal linear model (elastic net) ranked in order of importance: 
+
+ManufacturingProcess36 
+ManufacturingProcess09
+ManufacturingProcess17 
+ManufacturingProcess32 
+ManufacturingProcess13 
+BiologicalMaterial08
+ManufacturingProcess06 
+ManufacturingProcess24 
+BiologicalMaterial05
+BiologicalMaterial02
+
+Here are the most important predictors from the optimal nonlinear model (SVM) ranked in order of importance:
+
+```{r}
+varImp(cmpsvm)
+```
+
+In both of the optimal models, manufacturing processes dominate the list. There is a lot of overlap between the two models, but the SVM model has one additonal biological material predictor in its top 10 list. The SVM model also incorporates several more features than the Elastic Net model.
+
+(c) Explore the relationships between the top predictors and the response for the predictors that are unique to the optimal nonlinear regression model. Do these plots reveal intuition about the biological or process predictors and their relationship with yield?
+
+When we compare the top 10 predictors, there are 3 that are unique to the SVM model in comparison to the Elastic Net model, and all 3 are biological material predictors that have a positive association with yield. The SVM model reveals that the biological materials may have more of an influence on yield than previously assumed. Of the 3, biological material #6 has the strongest correlation with yield.
+
+```{r}
+cmp2 <- subset(cmp, select = c(BiologicalMaterial06, BiologicalMaterial12, BiologicalMaterial03, Yield))
+cor(cmp2, cmp[,'Yield'])
+```
+
