@@ -1,0 +1,410 @@
+---
+title: "DATA624 Beverage Manufacturing Modeling Final Project"
+author: "Omar Pineda, Calvin Wong, Murali Kunissery"
+date: "4/15/2020"
+output: html_document
+---
+
+## Task
+
+This is role playing. I am your new boss. I am in charge of production at ABC Beverage and you are a team of data scientists reporting to me. My leadership has told me that new regulations are requiring us to understand our manufacturing process, the predictive factors and be able to report to them our predictive model of PH.
+
+Please use the historical data set I am providing. Build and report the factors in BOTH a technical and non-technical report.  I like to use Word and Excel. Please provide your non-technical report in a  business friendly readable document and your predictions in an Excel readable format. The technical report should show clearly the models you tested and how you selected your final approach.
+
+Please submit both Rpubs links and .rmd files or other readable formats for technical and non-technical reports.  Also submit the excel file showing the prediction of your models for pH.
+
+## Data
+
+First, we load the libraries that we will use for our project.
+
+```{r, echo = FALSE}
+library(caTools)
+library(DMwR)
+library(mlbench)
+library(randomForest)
+library(caret)
+library(rpart)
+library(xlsx)
+library(psych)
+library(corrplot)
+library(RColorBrewer)
+library(DataExplorer)
+library(dplyr)
+library(tidyverse)
+library(ggpubr)
+library(rstatix)
+library(neuralnet)
+library(partykit)
+```
+
+Then we load our dataset and explore some of the statistics for our variables. 
+
+```{r}
+bev <- read.xlsx("StudentData.xlsx", sheetName = "Subset", stringsAsFactors = FALSE)
+bev_eval <- read.xlsx("StudentEvaluation.xlsx", sheetName = "Subset (2)", stringsAsFactors = FALSE)
+```
+
+We have 2,571 samples and 32 features that we can use to train our predictive model of PH. Here are summary statistics for our features:
+
+```{r}
+describe(bev)
+```
+
+Here are the distributions for our variables:
+
+```{r}
+plot_histogram(bev)
+```
+
+We can also visualize how much data we are missing for each of the individual predictors.
+
+```{r}
+apply(bev,2,function(x) sum(is.na(x)))
+plot_missing(bev)
+```
+
+We noticed that 4 samples had missing values for PH, so we decided to remove them from our analysis since we cannot use them to predict outcomes. This left us with 2,567 observations.
+
+```{r}
+#removal of samples with missing PH values
+bev <- bev[!is.na(bev$PH),]
+```
+
+Here we addressed the NA values of Brand.Code and assigned them with a value "U".
+
+```{r}
+bev$Brand.Code[is.na(bev$Brand.Code)] <- "E"
+bev_eval$Brand.Code[is.na(bev_eval$Brand.Code)] <- "E"
+```
+
+Next, we use KNN imputation which imputes a missing value with the average weighted value of observations near/similar to it. We perform this imputation for missing values in all variables except for the response variable, PH, and the Brand.Code predictor as it is not numerical.
+
+```{r}
+#imputations
+bev_imp <- knnImputation(bev[, !names(bev) %in% c("Brand.Code", "PH")])
+bev_imp$PH <- bev$PH
+bev_imp$Brand.Code <- bev$Brand.Code
+
+bev_eval_imp <- knnImputation(bev_eval[, !names(bev_eval) %in% c("Brand.Code", "PH")])
+bev_eval_imp$PH <- bev_eval$PH
+bev_eval_imp$Brand.Code <- bev_eval$Brand.Code
+```
+
+We also split our data into a training and test set, using 80% of our data to train our models and holding out 20% to test them.
+
+```{r}
+#data splitting
+set.seed(101) 
+sample = sample.split(bev_imp$Brand.Code, SplitRatio = .8)
+bev_train = subset(bev_imp, sample == TRUE)
+bev_test  = subset(bev_imp, sample == FALSE)
+
+bev_train_X = subset(bev_train, select = -PH)
+bev_train_y = bev_train[,'PH']
+
+bev_test_X = subset(bev_test, select = -PH)
+bev_test_y = bev_test[,'PH']
+```
+
+## Linear Regression Model
+
+Linear regression is an attractive model because representation is simply done. The representation is a linear equation that combines a specific set of input values (x) the solution to which is the predicted output for that set of input values (y). In this instance, we will be predicting PH values through three different linear regression techniques.
+
+### GLM
+
+The generalized linear model (GLM) is a flexible generalization of ordinary linear regression that allows for response variables that have error distribution models other than a normal distribution. The GLM generalizes linear regression by allowing the linear model to be related to the response variable via a link function and by allowing the magnitude of the variance of each measurement to be a function of its predicted value.
+
+```{r}
+control = trainControl(method = 'cv', number = 5, 
+  verboseIter = FALSE, savePredictions = TRUE,allowParallel = T)
+```
+
+```{r}
+set.seed(17)
+GLM_bev_train = train(PH ~ ., data = bev_train, metric = 'RMSE', method = 'glm',preProcess = c('center', 'scale'), trControl = control)
+GLM_reg_pred <- predict(GLM_bev_train, bev_test_X)
+
+GLM_bev_train
+```
+
+Using RMSE as a benchmark for linear regression modelling, we determined our GLM model performed quite well at 0.1341. We will attempt two other iterations with different linear techniques to determine if our baseline can be improved.
+
+### glmnet
+
+glmnet is an extremely efficient procedure for fitting the entire lasso or elastic-net regularization path for linear regression, logistic and multinomial regression models, Poisson regres- sion and the Cox model. Two recent additions are the multiple-response Gaussian, and the grouped multinomial regression. The algorithm uses cyclical coordinate descent in a path-wise fashion to determine the best linear fit.
+
+```{r}
+set.seed(17)
+glmnet_bev_train = train(PH ~ ., data = bev_train , metric = 'RMSE', method = 'glmnet',preProcess = c('center', 'scale'), trControl = control)
+
+glmnet_reg_pred <- predict(glmnet_bev_train, bev_test_X)
+glmnet_bev_train
+```
+
+The final values used for the model were alpha = 0.1 and lambda = 0.001485109, which produced an RMSE of 0.1340. Just a slight inprovement of 0.001. The close results can be explained by low lambda value, where a zero lambda is in effect a standard glm model. With elastic net you may be accepting some bias in return for a reduction in the variance of the estimator. The zero lambda value should in principle return the same as a (nonpenalized) glm model. Hence the near identical RMSE values.
+
+### Partial Least Squares
+
+Partial least squares (PLS) is a method for constructing predictive models when the factors are many and highly collinear. Partial least squares is a popular method for soft modelling in industrial applications. Partial least squares is a popular method for soft modelling in industrial applications. We believed that it would be an effective model to demonstrate.
+
+```{r}
+set.seed(17)
+pls_bev_train = train(PH ~ ., data = bev_train , metric = 'RMSE', method = 'pls',preProcess = c('center', 'scale'), trControl = control)
+
+pls_reg_pred <- predict(pls_bev_train, bev_test_X)
+pls_bev_train
+```
+
+The final value used for the model was ncomp = 3, it produced and RMSE of 0.1394786. To our surprise, this model worked poorly among the three examples.
+
+Although PLS accounts for over-fitting because of many manifest factors, there may be only a few underlying or latent factors that account for most of the variation in the response. The general idea of PLS is to try to extract these latent factors, accounting for as much of the manifest factor variation. In this instance, the variables do not possess latent tendencies and are directly observed. Therefore, this method of linear regression would be ineffective.
+
+## Non-linear Regression Models
+
+In this section, we are going to fit a simple neural network using the neuralnet package and fit a linear model as a comparison.
+
+```{r}
+bdev <- bev
+data <- subset(bev_imp, select = -c(Brand.Code))
+```
+
+Confirming that there are no more empty data:
+
+```{r}
+#describe(bev)
+apply(data,2,function(x) sum(is.na(x)))
+```
+
+There is no missing data, good. We proceed by randomly splitting the data into a train and a test set, then we fit a linear regression model and test it on the test set. Note that I am using the gml() function instead of the lm() this will become useful later when cross validating the linear model.
+
+```{r}
+index <- sample(1:nrow(data),round(0.75*nrow(data)))
+train <- data[index,]
+test <- data[-index,]
+lm.fit <- glm(PH~., data=train)
+summary(lm.fit)
+pr.lm <- predict(lm.fit,test)
+MSE.lm <- sum((pr.lm - test$medv)^2)/nrow(test)
+MSE.lm
+```
+
+The sample(x,size) function simply outputs a vector of the specified size of randomly selected samples from the vector x. By default the sampling is without replacement: index is essentially a random vector of indeces.
+
+Since we are dealing with a regression problem, we are going to use the mean squared error (MSE) as a measure of how much our predictions are far away from the real data.
+
+### Preparing to fit the neural network
+
+Before fitting a neural network, some preparation needs to be done.
+
+As a first step, we are going to address data preprocessing. I will be normalizing the data before training a neural network.  I chose to use the min-max method and scale the data in the interval [0,1]. Usually scaling in the intervals [0,1] or [-1,1] tends to give better results.
+
+We therefore scale and split the data before moving on:
+
+```{r }
+#data
+maxs <- apply(data, 2, max) 
+mins <- apply(data, 2, min)
+```
+
+Scaled returns a matrix that needs to be coerced into a data.frame.
+
+```{r }
+maxs <- apply(data, 2, max) 
+mins <- apply(data, 2, min)
+scaled <- as.data.frame(scale(data, center = mins, scale = maxs - mins))
+#scaled
+train_ <- scaled[index,]
+test_ <- scaled[-index,]
+```
+
+### Parameters
+
+As far as I know there is no fixed rule as to how many layers and neurons to use although there are several more or less accepted rules of thumb. Usually, if at all necessary, one hidden layer is enough for a vast numbers of applications. As far as the number of neurons is concerned, it should be between the input layer size and the output layer size, usually 2/3 of the input size. At least in my brief experience testing again and again is the best solution since there is no guarantee that any of these rules will fit your model best.
+In this dataset, we are going to use 2 hidden layers with this configuration: 32:5:3:1. The input layer has 32 inputs, the two hidden layers have 5 and 3 neurons and the output layer has, of course, a single output since we are doing regression.
+
+Let’s fit the net: Setting the linear.output = True does regression instead of classification.
+
+```{r }
+n <- names(train_)
+f <- as.formula(paste("PH ~", paste(n[!n %in% "PH"], collapse = " + ")))
+nn <- neuralnet(f,data=train_,hidden=c(5,3),linear.output=T)
+```
+
+### Plot the Neural Network
+
+```{r   }
+plot(nn)
+```
+The black lines show the connections between each layer and the weights on each connection while the blue lines show the bias term added in each step. The bias can be thought as the intercept of a linear model.
+The net is essentially a black box so we cannot say that much about the fitting, the weights and the model. Suffice to say that the training algorithm has converged and therefore the model is ready to be used.
+
+### Predicting PH using the neural network
+
+Now we can try to predict the values for the test set and calculate the MSE. The net will output a normalized prediction, so we need to scale it back in order to make a meaningful comparison (or just a simple prediction).
+
+```{r   }
+pr.nn <- compute(nn,test_[,1:32])
+pr.nn_ <- pr.nn$net.result*(max(data$PH)-min(data$PH))+min(data$PH)
+test.r <- (test_$PH)*(max(data$PH)-min(data$PH))+min(data$PH)
+MSE.nn <- sum((test.r - pr.nn_)^2)/nrow(test_)
+```
+
+```{r   }
+print(paste(MSE.lm,MSE.nn))
+```
+
+Apparently, the Linear Model is doing a better job than the Neural Network at predicting PH in this case as the MSE is 0 for the lm.
+
+```{r}
+lm.rmse <- sqrt(MSE.lm)
+print(lm.rmse)
+```
+
+The RMSE for our Neural Network is as follows:
+
+```{r}
+nn.rmse <- sqrt(MSE.nn)
+print(nn.rmse)
+```
+
+The RMSE for the linear model is also 0.
+
+### Output Plot
+
+```{r   }
+plot(test$PH,pr.nn_,col='red',main='Real vs predicted NN',pch=18,cex=0.7)
+points(test$PH,pr.lm,col='blue',pch=18,cex=0.7)
+abline(0,1,lwd=2)
+legend('bottomright',legend=c('NN','LM'),pch=18,col=c('red','blue'))
+```
+
+## Tree Models
+
+In this next part, we consider various tree models to predict the PH of a beverage given our information about the 32 manufacturing features.
+
+### Basic Regression Tree
+
+Classification and regression trees can be generated througn rpart to create simple tree models. Tree-based models consist of one or more nested if-then statements for the predictors that partition the data. A model is used to predict the outcome within these partitions. 
+
+```{r}
+bevb <- train(x = bev_train_X, y = bev_train_y, method = "rpart", preProcess = c('center', 'scale'))
+bevb
+```
+
+```{r}
+bevbPred <- predict(bevb, newdata = bev_test_X)
+bevb.results <- postResample(pred = bevbPred, obs = bev_test_y)
+bevb.results
+```
+
+The RMSE for this model is 0.147 with an RM^2 of 0.38.
+
+We also plot this specific tree below:
+
+```{r}
+plot(as.party(bevb$finalModel))
+```
+
+Next, we will try out a Random Forest model to see if we can improve upon this model.
+
+### Random Forest
+
+Random Forest is an ensemble model where each tree splits out a class prediction and the class with the most contributions becomes the model's prediction value. Random Forest creates as many trees on the subset of the data and combines the output of all the trees. This thus reduces problems in overfitting and reduces the variance.
+
+```{r}
+bev_train_X2 <- bev_train_X
+bev_train_X2$Brand.Code <- as.factor(bev_train_X2$Brand.Code)
+
+bevrf <- train(x = bev_train_X2, y = bev_train_y, method = "rf", preProcess = c('center', 'scale'))
+bevrf
+```
+
+```{r}
+bev_test_X2 <- bev_test_X
+bev_test_X2$Brand.Code <- as.factor(bev_test_X2$Brand.Code)
+
+bevrfPred <- predict(bevrf, newdata = bev_test_X2)
+bevrf.results <- postResample(pred = bevrfPred, obs = bev_test_y)
+bevrf.results
+```
+
+The RMSE for this model is 0.096 with a RM^2 of 0.739. We will also consider an XGBoost model to see if we can find any improvements.
+
+### XGBoost
+
+XGBoost is another ensemble model, this time using the gradient boosting framework which is a special case of boosting where errors are minimized by gradient descent algorithm. XGBoost only manages numeric vectors, so we have to recode our Brand.Code feature into numeric before tuning our model.
+
+```{r}
+bev_train_X3 <- bev_train_X
+bev_train_X3$Brand.Code <- as.numeric(bev_train_X2$Brand.Code)
+
+bevxgb <- train(x = bev_train_X3, y = bev_train_y, method = "xgbTree")
+bevxgb
+```
+
+```{r}
+bev_test_X3 <- bev_test_X
+bev_test_X3$Brand.Code <- as.numeric(as.factor(bev_test_X3$Brand.Code))
+
+bevxgbPred <- predict(bevxgb, newdata = bev_test_X3)
+bevxgb.results <- postResample(pred = bevxgbPred, obs = bev_test_y)
+bevxgb.results
+```
+
+The RMSE for this model is 0.107 with a RM^2 of 0.64.
+
+Lastly for this section, the results of these 3 Tree models are summarized here:
+
+```{r}
+xgb <- as.data.frame(as.list(bevxgb.results))
+basic <- as.data.frame(as.list(bevb.results))
+rf <- as.data.frame(as.list(bevrf.results))
+xgb$model <- 'XGBoost'
+basic$model <- 'Basic Regression Tree'
+rf$model <- 'Random Forest'
+
+tree.outcomes <- rbind(xgb, basic, rf)
+tree.outcomes
+```
+
+We considered Basic Regression, Random Forest and XGBoost tree models, and Random Forest performed the best in predicting PH as it had the smallest RMSE value at 0.1 and an R^2 of 0.7.
+
+In the Random Forest model, these were the most important predictors:
+
+```{r}
+varImp(bevrf)
+```
+
+## Conclusion
+
+Finally, we will choose our best model for predicting PH among the chosen Linear, Non-Linear and Tree Models that we have gone over in this analysis. Their RMSE metrics are summarized here:
+
+```{r}
+lin_model_perf <- getTrainPerf(glmnet_bev_train)
+print(lin_model_perf)
+
+print(nn.rmse)
+
+rf <- as.data.frame(as.list(bevrf.results))
+print(rf)
+```
+
+The RMSE for the chosen Linear Model (glm) was 0.134. The RMSE for the chosen Non-Linear Model (Neural Net) was 0.136. And lastly, the RMSE for the chosen Tree model (Random Forest) was 0.096. So, we chose the Random Forest Model to predict the PH of our bevarages given the predictors on hand.
+
+In this chosen Random Forest model, the top 5 predictors that we found to influence PH in the manufacturing process are Mnf.Flow, Brand.Code, Usage.cont, Oxygen.Filler, and Alch.Rel. We should pay close attention to these predictors when trying to control for the PH of our beverages given the new regulations that have been enacted.
+
+Finally, we will predict the PH values for the evaluation dataset that has been provided using the Random Forest model that was chosen as the best model. We are including these predictions with this submission as well.
+
+```{r}
+bev_eval_X2 <- bev_eval_imp
+bev_eval_X2$Brand.Code <- as.factor(bev_eval_X2$Brand.Code)
+
+finalPH <- predict(bevrf, newdata = bev_eval_X2)
+
+finalResult <- bev_eval
+finalResult$PH <- finalPH
+  
+head(finalResult)
+
+#write.csv(finalResult, "predictions.csv")
+```
